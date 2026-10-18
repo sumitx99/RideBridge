@@ -1,7 +1,11 @@
 // Uber: officially documented universal link. Opens the app if installed, else m.uber.com.
+// client_id is public (not a secret): it tells Uber the ride came from RideBridge.
+const UBER_CLIENT_ID = 'G8kB5ne5VC0JDrQctMPCTJqIXn_Iu293'
+
 export function uberLink({ lat, lng, name, address }) {
   const p = new URLSearchParams({
     action: 'setPickup',
+    client_id: UBER_CLIENT_ID,
     pickup: 'my_location',
     'dropoff[latitude]': lat,
     'dropoff[longitude]': lng,

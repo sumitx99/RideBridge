@@ -28,6 +28,7 @@ const compact = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
 
 export default function App() {
   const mapEl = useRef(null)
+  const speechRef = useRef(null)
   const placesRef = useRef(null) // Places library, for our own search box
   const placeRef = useRef(null) // puts the pin + fills the panel
   const tokenRef = useRef(null) // autocomplete session token
@@ -50,6 +51,8 @@ export default function App() {
   const [results, setResults] = useState([])
   const [loadingResults, setLoadingResults] = useState(false)
   const [chipEdges, setChipEdges] = useState({ prev: false, next: false })
+  const [listening, setListening] = useState(false)
+  const [voiceMessage, setVoiceMessage] = useState('')
 
   // New place selected: show its first photo
   useEffect(() => setActive(0), [dest?.name, dest?.address])
@@ -178,6 +181,52 @@ export default function App() {
     if (e.key === 'Enter' && suggestions[0]) pickSuggestion(suggestions[0])
     if (e.key === 'Escape') setSearchOpen(false)
   }
+
+  const toggleVoiceSearch = () => {
+    if (listening) {
+      speechRef.current?.stop()
+      setListening(false)
+      return
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setVoiceMessage('Voice search is not supported in this browser. Try Chrome or type your destination.')
+      return
+    }
+    setVoiceMessage('')
+    const recognition = new SpeechRecognition()
+    speechRef.current = recognition
+    recognition.lang = navigator.language?.startsWith('hi') ? 'hi-IN' : 'en-IN'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+    recognition.onstart = () => { setListening(true); setSearchOpen(true) }
+    recognition.onresult = (event) => {
+      const spoken = event.results?.[0]?.[0]?.transcript?.trim()
+      if (spoken) {
+        setQuery(spoken)
+        setSearchOpen(true)
+      }
+    }
+    recognition.onerror = (event) => {
+      setListening(false)
+      const messages = {
+        'not-allowed': 'Allow microphone access in your browser to use voice search.',
+        'service-not-allowed': 'Voice search is blocked by your browser settings.',
+        'no-speech': 'I didn’t hear anything. Tap the mic and try again.',
+        'network': 'Voice search needs an internet connection. Try again or type your destination.',
+      }
+      setVoiceMessage(messages[event.error] || 'Could not start voice search. Please try again.')
+    }
+    recognition.onend = () => setListening(false)
+    try {
+      recognition.start()
+    } catch {
+      setListening(false)
+      setVoiceMessage('Could not start voice search. Please try again.')
+    }
+  }
+
+  useEffect(() => () => speechRef.current?.abort(), [])
 
   // ---- Category carousel: show arrows only when there is more to scroll ----
   const updateChipEdges = () => {
@@ -311,7 +360,7 @@ export default function App() {
           onFocus={() => setSearchOpen(true)}
           onBlur={() => setSearchOpen(false)}
           onKeyDown={onSearchKey}
-          placeholder="Where do you want to go?"
+          placeholder={listening ? 'Listening… say your destination' : 'Where do you want to go?'}
           aria-label="Search destination"
           autoComplete="off"
           spellCheck="false"
@@ -321,6 +370,19 @@ export default function App() {
             ×
           </button>
         )}
+        <button
+          className={listening ? 'voice-button listening' : 'voice-button'}
+          type="button"
+          aria-label={listening ? 'Stop voice search' : 'Search by voice'}
+          aria-pressed={listening}
+          title={listening ? 'Stop listening' : 'Search by voice'}
+          onClick={toggleVoiceSearch}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="9" y="3" width="6" height="12" rx="3" />
+            <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" />
+          </svg>
+        </button>
         {searchOpen && suggestions.length > 0 && (
           <ul className="suggestions glass" role="listbox">
             {suggestions.map((s) => (
@@ -335,6 +397,7 @@ export default function App() {
           </ul>
         )}
       </div>
+      {voiceMessage && <div className="voice-status" role="status">{voiceMessage}<button type="button" aria-label="Dismiss message" onClick={() => setVoiceMessage('')}>×</button></div>}
       <div className="map" ref={mapEl} />
 
       <div className="chips-wrap">
