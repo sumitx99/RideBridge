@@ -76,27 +76,8 @@ flowchart LR
 4. Under **APIs & Services → Credentials**, create an **API key**.
 5. Restrict the key: set **API restrictions** to the two APIs above, and add **website restrictions** for the domains you deploy to.
 
-### 2. Install and run
 
-```bash
-git clone https://github.com/sumitx99/RideBridge.git
-cd RideBridge
-npm install
-```
-
-Create a `.env` file in the project root:
-
-```env
-VITE_GOOGLE_MAPS_API_KEY=your_api_key_here
-```
-
-Start the dev server:
-
-```bash
-npm run dev
-```
-
-### 3. Test on your phone
+### 2. Test on your phone
 
 Ride deep links only open the apps **on a phone**. On a desktop browser, Uber's link falls back to its website without the destination.
 
