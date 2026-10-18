@@ -503,6 +503,8 @@ body { background: #edf1ec; font-family: Inter, ui-sans-serif, system-ui, -apple
   .brand { top: 10px; left: 12px; height: 38px; }
   .search { top: 58px; left: 12px; right: 12px; }
   .chips-wrap { top: 118px; }
+  .chips { padding-left: 14px; scroll-padding-inline: 14px; scroll-snap-type: x mandatory; }
+  .chips .chip { scroll-snap-align: start; scroll-snap-stop: always; }
   .maptype { right: 12px; bottom: auto; top: 174px; }
   .panel { left: 10px; right: 10px; bottom: 10px; max-height: 43vh; }
   .voice-status { bottom: calc(43vh + 22px); left: 12px; }

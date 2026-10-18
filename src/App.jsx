@@ -245,6 +245,19 @@ export default function App() {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+  useEffect(() => {
+    const el = chipsRef.current
+    if (!el) return
+    const mobile = window.matchMedia('(max-width: 767px)')
+    const alignFirstCategory = () => {
+      if (!mobile.matches) return
+      el.scrollLeft = 0
+      updateChipEdges()
+    }
+    alignFirstCategory()
+    mobile.addEventListener('change', alignFirstCategory)
+    return () => mobile.removeEventListener('change', alignFirstCategory)
+  }, [])
   const scrollChips = (dir) => {
     const el = chipsRef.current
     el?.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' })
