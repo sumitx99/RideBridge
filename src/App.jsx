@@ -294,6 +294,12 @@ export default function App() {
 
   return (
     <div className="app">
+      <div className="brand" aria-label="RideBridge home">
+        <span className="brand-mark" aria-hidden="true"><span /><span /><span /></span>
+        <span className="brand-name">ride<span>bridge</span></span>
+        <span className="brand-tagline">YOUR RIDE, RIGHT THERE</span>
+      </div>
+      <div className="map-wash" aria-hidden="true" />
       <div className="search">
         <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
@@ -305,8 +311,8 @@ export default function App() {
           onFocus={() => setSearchOpen(true)}
           onBlur={() => setSearchOpen(false)}
           onKeyDown={onSearchKey}
-          placeholder="Search location to drop"
-          aria-label="Search location to drop"
+          placeholder="Where do you want to go?"
+          aria-label="Search destination"
           autoComplete="off"
           spellCheck="false"
         />
@@ -385,7 +391,13 @@ export default function App() {
             )}
           </div>
         ) : !dest ? (
-          <p className="hint">Search a place, then tap the exact spot on the map. Drag the pin to adjust.</p>
+          <div className="empty-state">
+            <span className="empty-icon" aria-hidden="true">↗</span>
+            <p className="eyebrow">THE LAST MILE, MADE EASY</p>
+            <h2>Choose your drop-off</h2>
+            <p className="hint">Search a place or tap the map to set the exact entrance. You can fine-tune the pin anytime.</p>
+            <div className="how-it-works"><span>1 <b>Pin your spot</b></span><i /><span>2 <b>Choose a ride</b></span></div>
+          </div>
         ) : (
           <>
             {category && (
@@ -423,12 +435,14 @@ export default function App() {
             <div className="dest">
               <h2>{dest.name}</h2>
               {dest.address && <p>{dest.address}</p>}
-              <code>{dest.lat}, {dest.lng}</code>
+              <code><span className="coordinate-dot" /> Exact pickup point · {dest.lat}, {dest.lng}</code>
             </div>
             <div className="actions">
-              <a className="btn uber" href={uberLink(dest)}>Book with Uber</a>
+              <a className="btn uber" href={uberLink(dest)}><span className="ride-icon">U</span><span>Continue with Uber<small>Open Uber app</small></span><b>↗</b></a>
               <button className="btn rapido" onClick={openRapido}>
+                <span className="ride-icon">R</span><span>
                 {copied ? 'Coordinates copied' : 'Book with Rapido'}
+                <small>Quick, affordable rides</small></span><b>↗</b>
               </button>
             </div>
           </>
@@ -461,7 +475,8 @@ export default function App() {
               </g>
             </svg>
 
-            <h1 id="landing-title" className="rise" style={{ '--d': '0.15s' }}>Ride to the exact spot.</h1>
+            <div className="landing-brand"><span className="brand-mark"><span /><span /><span /></span> ride<span>bridge</span></div>
+            <h1 id="landing-title" className="rise" style={{ '--d': '0.15s' }}>Your ride. Your exact spot.</h1>
             <p className="rise" style={{ '--d': '0.3s' }}>
               Pick your destination on the map, down to the right gate, and book it on Uber or Rapido.
             </p>
