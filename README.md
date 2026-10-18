@@ -117,22 +117,6 @@ intent:<lat>,<lng>?q=<lat>,<lng>(<place name>)#Intent;scheme=geo;package=com.rap
 
 > ⚠️ This Rapido integration is **unofficial**. It relies on how the current Rapido Android app handles `geo:` links and may stop working after an app update.
 
-## Project structure
-
-```
-RideBridge/
-├── index.html
-├── package.json
-├── vite.config.js
-├── .env                # your API key (git-ignored)
-└── src/
-    ├── main.jsx        # React entry
-    ├── App.jsx         # map, search, categories, panel, welcome screen
-    ├── maps.js         # loads the Google Maps JS API once
-    ├── rideLinks.js    # builds the Uber and Rapido links
-    └── styles.css      # glass design system and layout
-```
-
 ## Configuration
 
 | What | Where | Default |
