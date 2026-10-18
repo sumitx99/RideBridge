@@ -14,12 +14,27 @@ const toPhotos = (p) =>
     authorUri: ph.authorAttributions?.[0]?.uri || '',
   }))
 
+// Nearby categories (Places API (New) place types)
+const CATEGORIES = [
+  { id: 'restaurant', label: 'Restaurants', types: ['restaurant'] },
+  { id: 'cafe', label: 'Cafes', types: ['cafe'] },
+  { id: 'hotel', label: 'Hotels', types: ['lodging'] },
+  { id: 'todo', label: 'Things to do', types: ['tourist_attraction', 'museum', 'park'] },
+  { id: 'shopping', label: 'Shopping', types: ['shopping_mall'] },
+  { id: 'hospital', label: 'Hospitals', types: ['hospital'] },
+]
+const NEARBY_FIELDS = ['id', 'displayName', 'location', 'formattedAddress', 'rating', 'userRatingCount']
+const compact = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
 export default function App() {
   const mapEl = useRef(null)
   const placesRef = useRef(null) // Places library, for our own search box
   const placeRef = useRef(null) // puts the pin + fills the panel
   const tokenRef = useRef(null) // autocomplete session token
   const markerRef = useRef(null)
+  const selectRef = useRef(null) // select a Google place by id (pin + details + photos)
+  const poiRef = useRef([]) // numbered markers for nearby results
+  const chipsRef = useRef(null) // category carousel
   const mapRef = useRef(null)
   const [dest, setDest] = useState(null) // { lat, lng, name, address }
   const [error, setError] = useState('')
@@ -31,6 +46,10 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [searchOpen, setSearchOpen] = useState(false)
+  const [category, setCategory] = useState(null) // active nearby category
+  const [results, setResults] = useState([])
+  const [loadingResults, setLoadingResults] = useState(false)
+  const [chipEdges, setChipEdges] = useState({ prev: false, next: false })
 
   // New place selected: show its first photo
   useEffect(() => setActive(0), [dest?.name, dest?.address])
@@ -69,19 +88,24 @@ export default function App() {
       }
       placeRef.current = place
 
-      // Tap anywhere on the map to set the exact point (e.g. Gate No. 2)
-      map.addListener('click', async (e) => {
-        if (!e.placeId) return place(e.latLng.toJSON())
-        // Tapped a place icon: use its real name and address
-        e.stop() // hide Google's default info popup
-        place(e.latLng.toJSON())
+      // Pin a Google place right away, then fill in its real name, address and photos
+      const selectPlace = async (id, pos, name) => {
+        place(pos, name)
         try {
-          const p = new Place({ id: e.placeId })
+          const p = new Place({ id })
           await p.fetchFields({ fields: FIELDS })
           place(p.location.toJSON(), p.displayName, p.formattedAddress, toPhotos(p))
         } catch {
-          // keep the dropped pin if details fail
+          // keep the pin if details fail
         }
+      }
+      selectRef.current = selectPlace
+
+      // Tap anywhere on the map to set the exact point (e.g. Gate No. 2)
+      map.addListener('click', (e) => {
+        if (!e.placeId) return place(e.latLng.toJSON())
+        e.stop() // tapped a place icon: hide Google's default info popup
+        selectPlace(e.placeId, e.latLng.toJSON())
       })
 
       // Drag pin to fine-tune
@@ -155,6 +179,100 @@ export default function App() {
     if (e.key === 'Escape') setSearchOpen(false)
   }
 
+  // ---- Category carousel: show arrows only when there is more to scroll ----
+  const updateChipEdges = () => {
+    const el = chipsRef.current
+    if (!el) return
+    setChipEdges({
+      prev: el.scrollLeft > 2,
+      next: el.scrollLeft + el.clientWidth < el.scrollWidth - 2,
+    })
+  }
+  useEffect(() => {
+    const el = chipsRef.current
+    if (!el) return
+    // Re-measure whenever the carousel's size changes (first layout, fonts, window resize)
+    const ro = new ResizeObserver(updateChipEdges)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const scrollChips = (dir) => {
+    const el = chipsRef.current
+    el?.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' })
+  }
+
+  // ---- Nearby categories ----
+  const clearPoi = () => {
+    poiRef.current.forEach((m) => { m.map = null })
+    poiRef.current = []
+  }
+
+  const hidePin = () => {
+    if (markerRef.current) markerRef.current.position = null
+  }
+
+  const pickResult = (r) => {
+    mapRef.current.panTo(r.pos)
+    selectRef.current(r.id, r.pos, r.name)
+  }
+
+  const showCategory = async (cat) => {
+    const map = mapRef.current
+    const lib = placesRef.current
+    if (!map || !lib) return
+    clearPoi()
+    if (category === cat.id) return setCategory(null) // tap again to close
+
+    setCategory(cat.id)
+    setResults([])
+    setDest(null)
+    hidePin()
+    setLoadingResults(true)
+    try {
+      const { places } = await lib.Place.searchNearby({
+        fields: NEARBY_FIELDS,
+        locationRestriction: { center: map.getCenter(), radius: 2000 },
+        includedTypes: cat.types,
+        maxResultCount: 10,
+      })
+      const list = places.map((p) => ({
+        id: p.id,
+        name: p.displayName,
+        address: p.formattedAddress,
+        rating: p.rating,
+        count: p.userRatingCount,
+        pos: p.location.toJSON(),
+      }))
+      const { AdvancedMarkerElement } = await google.maps.importLibrary('marker')
+      const bounds = new google.maps.LatLngBounds()
+      poiRef.current = list.map((r, i) => {
+        const el = document.createElement('div')
+        el.className = 'poi-marker'
+        el.textContent = i + 1
+        const m = new AdvancedMarkerElement({ map, position: r.pos, content: el, title: r.name })
+        m.addListener('click', () => pickResult(r))
+        bounds.extend(r.pos)
+        return m
+      })
+      if (list.length) {
+        const desktop = window.matchMedia('(min-width: 768px)').matches
+        map.fitBounds(bounds, desktop
+          ? { top: 120, right: 420, bottom: 40, left: 40 }
+          : { top: 140, right: 30, bottom: 320, left: 30 })
+      }
+      setResults(list)
+    } catch {
+      setResults([])
+    } finally {
+      setLoadingResults(false)
+    }
+  }
+
+  const backToResults = () => {
+    setDest(null)
+    hidePin()
+  }
+
   const openRapido = async () => {
     const link = rapidoLink(dest)
     if (link) return (window.location.href = link)
@@ -213,6 +331,27 @@ export default function App() {
       </div>
       <div className="map" ref={mapEl} />
 
+      <div className="chips-wrap">
+        {chipEdges.prev && (
+          <button className="chip-arrow glass" aria-label="Previous categories" onClick={() => scrollChips(-1)}>‹</button>
+        )}
+        <div className="chips" role="toolbar" aria-label="Nearby places" ref={chipsRef} onScroll={updateChipEdges}>
+          {CATEGORIES.map((c) => (
+            <button
+              key={c.id}
+              className={category === c.id ? 'chip active' : 'chip'}
+              aria-pressed={category === c.id}
+              onClick={() => showCategory(c)}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        {chipEdges.next && (
+          <button className="chip-arrow glass" aria-label="More categories" onClick={() => scrollChips(1)}>›</button>
+        )}
+      </div>
+
       <div className="maptype glass" role="group" aria-label="Map style">
         <button aria-pressed={mapType === 'roadmap'} onClick={() => switchMapType('roadmap')}>Map</button>
         <button aria-pressed={mapType === 'hybrid'} onClick={() => switchMapType('hybrid')}>Satellite</button>
@@ -221,10 +360,37 @@ export default function App() {
       <aside className="panel glass">
         {error ? (
           <p className="error">{error}</p>
+        ) : !dest && category ? (
+          <div className="results">
+            <h3>{CATEGORIES.find((c) => c.id === category).label} nearby</h3>
+            {loadingResults ? (
+              <p className="hint">Searching nearby…</p>
+            ) : results.length === 0 ? (
+              <p className="hint">Nothing found around here. Move the map and tap the category again.</p>
+            ) : (
+              <ol>
+                {results.map((r, i) => (
+                  <li key={r.id}>
+                    <button onClick={() => pickResult(r)}>
+                      <span className="num">{i + 1}</span>
+                      <span className="info">
+                        <strong>{r.name}</strong>
+                        {r.rating && <em>{r.rating.toFixed(1)} ★ ({compact(r.count || 0)})</em>}
+                        {r.address && <span>{r.address}</span>}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
         ) : !dest ? (
           <p className="hint">Search a place, then tap the exact spot on the map. Drag the pin to adjust.</p>
         ) : (
           <>
+            {category && (
+              <button className="back" onClick={backToResults}>← Back to results</button>
+            )}
             {dest.photos?.length > 0 && (() => {
               const photo = dest.photos[Math.min(active, dest.photos.length - 1)]
               return (

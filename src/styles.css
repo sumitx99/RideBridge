@@ -3,6 +3,7 @@
   --muted: #4d5560;
   --line: rgba(20, 23, 28, 0.12);
   --pin: #e5484d;
+  --on-text: #ffffff; /* text on a var(--text) background */
 
   /* Glass */
   --glass-bg: rgba(255, 255, 255, 0.5);
@@ -15,6 +16,7 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --text: #f1f3f6;
+    --on-text: #111418;
     --muted: #b3bac4;
     --line: rgba(255, 255, 255, 0.14);
     --glass-bg: rgba(20, 23, 28, 0.55);
@@ -89,9 +91,55 @@ body {
 .suggestions span { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @keyframes drop-in { from { opacity: 0; transform: translateY(-6px); } }
 
+/* Nearby category chips */
+.chips-wrap {
+  position: absolute; z-index: 2; top: 74px; left: 0; right: 0;
+  display: flex; align-items: center; gap: 6px;
+}
+.chips {
+  flex: 1; min-width: 0;
+  display: flex; gap: 8px; padding: 4px 12px 8px;
+  overflow-x: auto; scrollbar-width: none;
+  scroll-snap-type: x mandatory; scroll-padding: 0 12px;
+}
+.chips .chip { scroll-snap-align: start; }
+/* Arrows only on desktop; on phones the row is swiped */
+.chip-arrow {
+  display: none; flex: 0 0 auto;
+  width: 34px; height: 34px; border-radius: 50%; cursor: pointer;
+  color: var(--text); font: 600 20px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  padding: 0 0 2px;
+}
+.chip-arrow:hover { background: var(--glass-strong); }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: 0 0 auto; padding: 9px 15px; border-radius: 999px; cursor: pointer;
+  color: var(--text); white-space: nowrap;
+  font: 600 13.5px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 4px 14px rgba(15, 20, 30, 0.12);
+  transition: background 0.2s, color 0.2s, transform 0.1s;
+}
+.chip:hover { background: var(--glass-strong); }
+.chip:active { transform: scale(0.97); }
+.chip.active { background: var(--text); color: var(--on-text); border-color: transparent; }
+.chip:focus-visible { outline: 2px solid #4c8bf5; outline-offset: 2px; }
+
+/* Numbered markers for nearby results */
+.poi-marker {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: #14171c; color: #fff; border: 2px solid #fff;
+  font: 700 12px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  cursor: pointer; animation: pop 0.25s ease-out both;
+}
+
 /* Map / Satellite toggle */
 .maptype {
-  position: absolute; z-index: 2; top: 80px; right: 12px;
+  position: absolute; z-index: 2; top: 124px; right: 12px;
   display: flex; padding: 3px; gap: 2px; border-radius: 12px;
 }
 .maptype button {
@@ -158,9 +206,45 @@ body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 6px 16px rgba(180, 150, 0, 0.25);
 }
 
+/* Nearby results list in the panel */
+.results h3 { margin: 0 0 10px; font-size: 16px; font-weight: 650; }
+.results ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.results button {
+  display: flex; gap: 12px; align-items: flex-start; width: 100%;
+  padding: 10px 8px; border: 0; border-radius: 12px; background: none;
+  color: var(--text); text-align: left; cursor: pointer;
+  font: 14px/1.35 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+.results button:hover { background: var(--glass-strong); }
+.results .num {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%; margin-top: 1px;
+  display: grid; place-items: center; background: var(--text); color: var(--on-text);
+  font-size: 12px; font-weight: 700;
+}
+.results .info { display: grid; gap: 2px; min-width: 0; }
+.results strong { font-weight: 600; }
+.results em { font-style: normal; font-size: 12.5px; color: var(--muted); }
+.results .info span { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.back {
+  margin: -4px 0 12px -6px; padding: 6px 8px; border: 0; border-radius: 8px;
+  background: none; color: var(--muted); cursor: pointer;
+  font: 600 13px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+.back:hover { background: var(--glass-strong); color: var(--text); }
+
 /* Desktop */
 @media (min-width: 768px) {
-  .search { right: 404px; }
+  /* Search on the left, category carousel (about 3 chips) right next to it */
+  .search { right: auto; width: 400px; }
+  .chips-wrap { top: 12px; left: 424px; right: 404px; max-width: 470px; height: 52px; }
+  .chips {
+    padding: 4px 4px; scroll-padding: 0 4px;
+    /* soft fade where chips run under the arrows */
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 10px, #000 calc(100% - 18px), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 10px, #000 calc(100% - 18px), transparent);
+  }
+  .chip-arrow { display: grid; place-items: center; }
   .maptype { top: auto; right: auto; bottom: 24px; left: 12px; }
   .panel {
     left: auto; top: 12px; right: 12px; bottom: auto;
