@@ -184,33 +184,9 @@ body {
 .dest h2 { margin: 0 0 4px; font-size: 19px; font-weight: 650; letter-spacing: -0.01em; line-height: 1.3; }
 .dest p { margin: 0 0 8px; font-size: 14px; color: var(--muted); line-height: 1.45; }
 .dest code { font-size: 12px; color: var(--muted); }
-.pickup-marker { width: 20px; height: 20px; border: 4px solid #fff; border-radius: 50%; background: #1a9b70; box-shadow: 0 2px 9px rgba(0, 0, 0, .3); }
 
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.actions .fare-compare { grid-column: 1 / -1; }
 .actions .btn small { display: block; margin-top: 4px; font-size: 11px; font-weight: 500; opacity: .78; }
-.fare-compare { display: grid; gap: 12px; padding: 15px; border: 1px solid rgba(39, 107, 88, .18); border-radius: 18px; background: rgba(255, 255, 255, .78); }
-.fare-compare-head { display: grid; gap: 3px; }
-.fare-compare-head strong { font-size: 16px; color: var(--text); }
-.fare-compare-head span, .fare-hint { font-size: 12px; line-height: 1.4; color: var(--muted); }
-.pickup-choice { display: grid; gap: 8px; padding: 11px; border-radius: 12px; background: rgba(235, 242, 237, .78); }
-.pickup-choice > span { font-size: 12px; font-weight: 650; }
-.pickup-choice > div { display: flex; flex-wrap: wrap; gap: 7px; }
-.pickup-choice button { padding: 7px 10px; border: 1px solid rgba(30, 58, 48, .18); border-radius: 9px; background: #fff; color: var(--text); font: 600 12px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer; }
-.pickup-choice button:focus-visible, .fare-compare-button:focus-visible { outline: 3px solid #4c8bf5; outline-offset: 2px; }
-.fare-compare-button { width: 100%; min-height: 48px; border: 0; border-radius: 12px; background: linear-gradient(110deg, #183a32, #276b58 65%, #e46e50); color: #fff; font: 700 14px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer; box-shadow: 0 8px 18px rgba(24, 58, 50, .18); }
-.fare-compare-button:disabled { opacity: .65; cursor: wait; }
-.fare-results { display: grid; gap: 8px; }
-.fare-best { display: grid; gap: 3px; padding: 10px 12px; border-radius: 11px; background: #eaf6ed; color: #1b513d; }
-.fare-best span { font-size: 11px; }
-.fare-best strong { font-size: 14px; }
-.fare-result { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 11px; background: #fff; }
-.fare-result > div { display: grid; gap: 2px; min-width: 0; }
-.fare-result strong { font-size: 12px; }
-.fare-result span, .fare-results small { font-size: 11px; color: var(--muted); }
-.fare-result b { font-size: 13px; white-space: nowrap; }
-.fare-hint { margin: 0; }
-.fare-error { margin: 0; color: #a6332d; font-size: 12px; line-height: 1.4; }
 .btn small { display: block; margin-top: 4px; font-size: 11px; font-weight: 500; opacity: .78; }
 .btn {
   display: flex; align-items: center; justify-content: center; text-align: center; padding: 14px 12px; border-radius: 14px;

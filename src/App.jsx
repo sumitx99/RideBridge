@@ -25,13 +25,6 @@ const CATEGORIES = [
 ]
 const NEARBY_FIELDS = ['id', 'displayName', 'location', 'formattedAddress', 'rating', 'userRatingCount']
 const compact = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
-const money = (amount, currency = 'INR') => {
-  try {
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
-  } catch {
-    return `${currency} ${amount}`
-  }
-}
 
 export default function App() {
   const mapEl = useRef(null)
@@ -40,17 +33,11 @@ export default function App() {
   const placeRef = useRef(null) // puts the pin + fills the panel
   const tokenRef = useRef(null) // autocomplete session token
   const markerRef = useRef(null)
-  const pickupPlaceRef = useRef(null)
-  const pickupModeRef = useRef(false)
-  const pickupSelectionRef = useRef(false)
   const selectRef = useRef(null) // select a Google place by id (pin + details + photos)
   const poiRef = useRef([]) // numbered markers for nearby results
   const chipsRef = useRef(null) // category carousel
   const mapRef = useRef(null)
   const [dest, setDest] = useState(null) // { lat, lng, name, address }
-  const [pickup, setPickup] = useState(null)
-  const [selectingPickup, setSelectingPickup] = useState(false)
-  const [comparison, setComparison] = useState({ state: 'idle', quotes: [], status: {} })
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [active, setActive] = useState(0) // selected photo in the panel
@@ -91,8 +78,6 @@ export default function App() {
 
   // New place selected: show its first photo
   useEffect(() => setActive(0), [dest?.name, dest?.address])
-  useEffect(() => setComparison({ state: 'idle', quotes: [], status: {} }),
-    [dest?.lat, dest?.lng, pickup?.lat, pickup?.lng])
 
   useEffect(() => {
     if (!API_KEY) {
@@ -121,16 +106,6 @@ export default function App() {
 
       const marker = new AdvancedMarkerElement({ map, gmpDraggable: true })
       markerRef.current = marker
-      const pickupDot = document.createElement('div')
-      pickupDot.className = 'pickup-marker'
-      const pickupMarker = new AdvancedMarkerElement({ map, content: pickupDot, title: 'Pickup point' })
-      const pickupPlace = (pos, name = 'Pinned pickup', chosenByUser = true) => {
-        if (!chosenByUser && pickupSelectionRef.current) return
-        if (chosenByUser) pickupSelectionRef.current = true
-        pickupMarker.position = pos
-        setPickup({ lat: +pos.lat.toFixed(6), lng: +pos.lng.toFixed(6), name })
-      }
-      pickupPlaceRef.current = pickupPlace
 
       const place = (pos, name = 'Dropped pin', address = '', photos = []) => {
         marker.position = pos
@@ -153,13 +128,6 @@ export default function App() {
 
       // Tap anywhere on the map to set the exact point (e.g. Gate No. 2)
       map.addListener('click', (e) => {
-        if (pickupModeRef.current) {
-          if (e.placeId) e.stop()
-          pickupPlace(e.latLng.toJSON())
-          pickupModeRef.current = false
-          setSelectingPickup(false)
-          return
-        }
         if (!e.placeId) return place(e.latLng.toJSON())
         e.stop() // tapped a place icon: hide Google's default info popup
         selectPlace(e.placeId, e.latLng.toJSON())
@@ -177,7 +145,6 @@ export default function App() {
         ({ coords }) => {
           const pos = { lat: coords.latitude, lng: coords.longitude }
           map.setCenter(pos)
-          pickupPlace(pos, 'Your location', false)
         },
         () => {}
       )
@@ -401,47 +368,6 @@ export default function App() {
     setTimeout(() => setCopied(false), 2500)
   }
 
-  const useCurrentPickup = () => {
-    if (!navigator.geolocation) {
-      setComparison({ state: 'error', quotes: [], status: {}, error: 'Location is unavailable. Set pickup on the map.' })
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => pickupPlaceRef.current?.({ lat: coords.latitude, lng: coords.longitude }, 'Your location'),
-      () => setComparison({ state: 'error', quotes: [], status: {}, error: 'Allow location access or set pickup on the map.' }),
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
-  }
-
-  const choosePickupOnMap = () => {
-    pickupModeRef.current = !pickupModeRef.current
-    setSelectingPickup(pickupModeRef.current)
-  }
-
-  const compareFares = async () => {
-    if (!pickup || !dest) {
-      setComparison({ state: 'error', quotes: [], status: {}, error: 'Set your pickup point first.' })
-      return
-    }
-    setComparison({ state: 'loading', quotes: [], status: {} })
-    try {
-      const response = await fetch('/api/compare', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pickup, dropoff: { lat: dest.lat, lng: dest.lng } }),
-      })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || 'Could not get fares.')
-      setComparison({ state: 'done', quotes: result.quotes || [], status: result.status || {}, fetchedAt: result.fetchedAt })
-    } catch (error) {
-      setComparison({ state: 'error', quotes: [], status: {}, error: error.message || 'Could not get fares.' })
-    }
-  }
-
-  const sortedQuotes = [...comparison.quotes].sort((a, b) => (a.low ?? a.high) - (b.low ?? b.high))
-  const sameCurrency = new Set(sortedQuotes.map((quote) => quote.currency)).size <= 1
-  const bestQuote = sameCurrency ? sortedQuotes[0] : null
-
   const switchMapType = (type) => {
     setMapType(type)
     mapRef.current?.setMapTypeId(type)
@@ -634,39 +560,6 @@ export default function App() {
               <code><span className="coordinate-dot" /> Drop-off point · {dest.lat}, {dest.lng}</code>
             </div>
             <div className="actions">
-              <div className="fare-compare">
-                <div className="fare-compare-head">
-                  <strong>Compare fares</strong>
-                  <span>Uber + Rapido estimates for this route</span>
-                </div>
-                <div className="pickup-choice">
-                  <span>Pickup: {pickup ? pickup.name : 'Choose your pickup point'}</span>
-                  <div>
-                    <button type="button" onClick={useCurrentPickup}>Use my location</button>
-                    <button type="button" onClick={choosePickupOnMap}>{selectingPickup ? 'Cancel map pick' : 'Pick on map'}</button>
-                  </div>
-                </div>
-                {selectingPickup && <p className="fare-hint">Tap the map to place your pickup pin.</p>}
-                <button className="fare-compare-button" type="button" onClick={compareFares} disabled={comparison.state === 'loading'}>
-                  {comparison.state === 'loading' ? 'Getting fares…' : 'Compare Uber + Rapido'}
-                </button>
-                {comparison.state === 'error' && <p className="fare-error" role="alert">{comparison.error}</p>}
-                {comparison.state === 'done' && <div className="fare-results" aria-live="polite">
-                  {bestQuote && <div className="fare-best">
-                    <span>{new Set(sortedQuotes.map((quote) => quote.provider)).size > 1 ? 'Lowest starting estimate' : 'Lowest available estimate'}</span>
-                    <strong>{bestQuote.provider} {bestQuote.category} · {money(bestQuote.low ?? bestQuote.high, bestQuote.currency)}</strong>
-                  </div>}
-                  {sortedQuotes.map((quote, index) => <div className="fare-result" key={`${quote.provider}-${quote.name}-${index}`}>
-                    <div><strong>{quote.provider} · {quote.name}</strong><span>{quote.category}</span></div>
-                    <b>{quote.low !== null ? money(quote.low, quote.currency) : money(quote.high, quote.currency)}
-                      {quote.high !== null && quote.high !== quote.low ? `–${money(quote.high, quote.currency)}` : ''}</b>
-                  </div>)}
-                  {sortedQuotes.length === 0 && <p className="fare-hint">No live fares available for this route.</p>}
-                  {Object.entries(comparison.status).filter(([, status]) => status !== 'ok').map(([provider, status]) =>
-                    <p className="fare-hint" key={provider}>{provider}: {status}</p>)}
-                  {sortedQuotes.length > 0 && <small>Estimated prices can change before booking.</small>}
-                </div>}
-              </div>
               <a className="btn uber" href={uberLink(dest)} target="_blank" rel="noreferrer"><span className="ride-icon">U</span><span>
                 Open Uber<small>View available rides and fares</small></span><b>↗</b>
               </a>
