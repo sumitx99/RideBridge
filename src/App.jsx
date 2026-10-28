@@ -25,6 +25,13 @@ const CATEGORIES = [
 ]
 const NEARBY_FIELDS = ['id', 'displayName', 'location', 'formattedAddress', 'rating', 'userRatingCount']
 const compact = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+const money = (amount, currency = 'INR') => {
+  try {
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount)
+  } catch {
+    return `${currency} ${amount}`
+  }
+}
 
 export default function App() {
   const mapEl = useRef(null)
@@ -33,11 +40,17 @@ export default function App() {
   const placeRef = useRef(null) // puts the pin + fills the panel
   const tokenRef = useRef(null) // autocomplete session token
   const markerRef = useRef(null)
+  const pickupPlaceRef = useRef(null)
+  const pickupModeRef = useRef(false)
+  const pickupSelectionRef = useRef(false)
   const selectRef = useRef(null) // select a Google place by id (pin + details + photos)
   const poiRef = useRef([]) // numbered markers for nearby results
   const chipsRef = useRef(null) // category carousel
   const mapRef = useRef(null)
   const [dest, setDest] = useState(null) // { lat, lng, name, address }
+  const [pickup, setPickup] = useState(null)
+  const [selectingPickup, setSelectingPickup] = useState(false)
+  const [comparison, setComparison] = useState({ state: 'idle', quotes: [], status: {} })
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [active, setActive] = useState(0) // selected photo in the panel
@@ -53,9 +66,33 @@ export default function App() {
   const [chipEdges, setChipEdges] = useState({ prev: false, next: false })
   const [listening, setListening] = useState(false)
   const [voiceMessage, setVoiceMessage] = useState('')
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [installHelp, setInstallHelp] = useState(false)
+  const [installed, setInstalled] = useState(() =>
+    window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true)
+
+  useEffect(() => {
+    const onInstallReady = (event) => {
+      event.preventDefault()
+      setInstallPrompt(event)
+    }
+    const onInstalled = () => {
+      setInstalled(true)
+      setInstallHelp(false)
+      setInstallPrompt(null)
+    }
+    window.addEventListener('beforeinstallprompt', onInstallReady)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onInstallReady)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
+  }, [])
 
   // New place selected: show its first photo
   useEffect(() => setActive(0), [dest?.name, dest?.address])
+  useEffect(() => setComparison({ state: 'idle', quotes: [], status: {} }),
+    [dest?.lat, dest?.lng, pickup?.lat, pickup?.lng])
 
   useEffect(() => {
     if (!API_KEY) {
@@ -84,6 +121,16 @@ export default function App() {
 
       const marker = new AdvancedMarkerElement({ map, gmpDraggable: true })
       markerRef.current = marker
+      const pickupDot = document.createElement('div')
+      pickupDot.className = 'pickup-marker'
+      const pickupMarker = new AdvancedMarkerElement({ map, content: pickupDot, title: 'Pickup point' })
+      const pickupPlace = (pos, name = 'Pinned pickup', chosenByUser = true) => {
+        if (!chosenByUser && pickupSelectionRef.current) return
+        if (chosenByUser) pickupSelectionRef.current = true
+        pickupMarker.position = pos
+        setPickup({ lat: +pos.lat.toFixed(6), lng: +pos.lng.toFixed(6), name })
+      }
+      pickupPlaceRef.current = pickupPlace
 
       const place = (pos, name = 'Dropped pin', address = '', photos = []) => {
         marker.position = pos
@@ -106,6 +153,13 @@ export default function App() {
 
       // Tap anywhere on the map to set the exact point (e.g. Gate No. 2)
       map.addListener('click', (e) => {
+        if (pickupModeRef.current) {
+          if (e.placeId) e.stop()
+          pickupPlace(e.latLng.toJSON())
+          pickupModeRef.current = false
+          setSelectingPickup(false)
+          return
+        }
         if (!e.placeId) return place(e.latLng.toJSON())
         e.stop() // tapped a place icon: hide Google's default info popup
         selectPlace(e.placeId, e.latLng.toJSON())
@@ -120,7 +174,11 @@ export default function App() {
 
       // Center on user's location if allowed
       navigator.geolocation?.getCurrentPosition(
-        ({ coords }) => map.setCenter({ lat: coords.latitude, lng: coords.longitude }),
+        ({ coords }) => {
+          const pos = { lat: coords.latitude, lng: coords.longitude }
+          map.setCenter(pos)
+          pickupPlace(pos, 'Your location', false)
+        },
         () => {}
       )
     })().catch((e) => setError(e.message))
@@ -343,6 +401,47 @@ export default function App() {
     setTimeout(() => setCopied(false), 2500)
   }
 
+  const useCurrentPickup = () => {
+    if (!navigator.geolocation) {
+      setComparison({ state: 'error', quotes: [], status: {}, error: 'Location is unavailable. Set pickup on the map.' })
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => pickupPlaceRef.current?.({ lat: coords.latitude, lng: coords.longitude }, 'Your location'),
+      () => setComparison({ state: 'error', quotes: [], status: {}, error: 'Allow location access or set pickup on the map.' }),
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
+  const choosePickupOnMap = () => {
+    pickupModeRef.current = !pickupModeRef.current
+    setSelectingPickup(pickupModeRef.current)
+  }
+
+  const compareFares = async () => {
+    if (!pickup || !dest) {
+      setComparison({ state: 'error', quotes: [], status: {}, error: 'Set your pickup point first.' })
+      return
+    }
+    setComparison({ state: 'loading', quotes: [], status: {} })
+    try {
+      const response = await fetch('/api/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pickup, dropoff: { lat: dest.lat, lng: dest.lng } }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Could not get fares.')
+      setComparison({ state: 'done', quotes: result.quotes || [], status: result.status || {}, fetchedAt: result.fetchedAt })
+    } catch (error) {
+      setComparison({ state: 'error', quotes: [], status: {}, error: error.message || 'Could not get fares.' })
+    }
+  }
+
+  const sortedQuotes = [...comparison.quotes].sort((a, b) => (a.low ?? a.high) - (b.low ?? b.high))
+  const sameCurrency = new Set(sortedQuotes.map((quote) => quote.currency)).size <= 1
+  const bestQuote = sameCurrency ? sortedQuotes[0] : null
+
   const switchMapType = (type) => {
     setMapType(type)
     mapRef.current?.setMapTypeId(type)
@@ -354,12 +453,33 @@ export default function App() {
     setTimeout(() => setStarted(true), 450)
   }
 
+  const installApp = async () => {
+    if (!installPrompt) return setInstallHelp(true)
+    try {
+      await installPrompt.prompt()
+      const choice = await installPrompt.userChoice
+      setInstallPrompt(null)
+      if (choice.outcome !== 'accepted') setInstallHelp(true)
+    } catch {
+      setInstallHelp(true)
+    }
+  }
+
+  const installInstructions = !window.isSecureContext
+    ? 'Open the deployed HTTPS RideBridge website in Chrome or Safari, then install it from there.'
+    : /Macintosh/.test(navigator.userAgent) && /Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Edg/.test(navigator.userAgent)
+      ? 'In Safari, choose File → Add to Dock. RideBridge will appear in your Applications and Dock.'
+      : /Android/.test(navigator.userAgent)
+        ? 'In Chrome, tap ⋮ → Add to Home screen → Install app.'
+        : 'Use your browser menu → Install RideBridge. On Mac Safari, choose File → Add to Dock.'
+
   return (
     <div className="app">
       <div className="brand" aria-label="RideBridge home">
         <span className="brand-mark" aria-hidden="true"><span /><span /><span /></span>
         <span className="brand-name">ride<span>bridge</span></span>
         <span className="brand-tagline">YOUR RIDE, RIGHT THERE</span>
+        {!installed && <button className="brand-install" type="button" onClick={installApp} aria-label="Install RideBridge app">↓ <span>Install</span></button>}
       </div>
       <div className="map-wash" aria-hidden="true" />
       <div className="search">
@@ -511,14 +631,48 @@ export default function App() {
             <div className="dest">
               <h2>{dest.name}</h2>
               {dest.address && <p>{dest.address}</p>}
-              <code><span className="coordinate-dot" /> Exact pickup point · {dest.lat}, {dest.lng}</code>
+              <code><span className="coordinate-dot" /> Drop-off point · {dest.lat}, {dest.lng}</code>
             </div>
             <div className="actions">
-              <a className="btn uber" href={uberLink(dest)}><span className="ride-icon">U</span><span>Continue with Uber<small>Open Uber app</small></span><b>↗</b></a>
+              <div className="fare-compare">
+                <div className="fare-compare-head">
+                  <strong>Compare fares</strong>
+                  <span>Uber + Rapido estimates for this route</span>
+                </div>
+                <div className="pickup-choice">
+                  <span>Pickup: {pickup ? pickup.name : 'Choose your pickup point'}</span>
+                  <div>
+                    <button type="button" onClick={useCurrentPickup}>Use my location</button>
+                    <button type="button" onClick={choosePickupOnMap}>{selectingPickup ? 'Cancel map pick' : 'Pick on map'}</button>
+                  </div>
+                </div>
+                {selectingPickup && <p className="fare-hint">Tap the map to place your pickup pin.</p>}
+                <button className="fare-compare-button" type="button" onClick={compareFares} disabled={comparison.state === 'loading'}>
+                  {comparison.state === 'loading' ? 'Getting fares…' : 'Compare Uber + Rapido'}
+                </button>
+                {comparison.state === 'error' && <p className="fare-error" role="alert">{comparison.error}</p>}
+                {comparison.state === 'done' && <div className="fare-results" aria-live="polite">
+                  {bestQuote && <div className="fare-best">
+                    <span>{new Set(sortedQuotes.map((quote) => quote.provider)).size > 1 ? 'Lowest starting estimate' : 'Lowest available estimate'}</span>
+                    <strong>{bestQuote.provider} {bestQuote.category} · {money(bestQuote.low ?? bestQuote.high, bestQuote.currency)}</strong>
+                  </div>}
+                  {sortedQuotes.map((quote, index) => <div className="fare-result" key={`${quote.provider}-${quote.name}-${index}`}>
+                    <div><strong>{quote.provider} · {quote.name}</strong><span>{quote.category}</span></div>
+                    <b>{quote.low !== null ? money(quote.low, quote.currency) : money(quote.high, quote.currency)}
+                      {quote.high !== null && quote.high !== quote.low ? `–${money(quote.high, quote.currency)}` : ''}</b>
+                  </div>)}
+                  {sortedQuotes.length === 0 && <p className="fare-hint">No live fares available for this route.</p>}
+                  {Object.entries(comparison.status).filter(([, status]) => status !== 'ok').map(([provider, status]) =>
+                    <p className="fare-hint" key={provider}>{provider}: {status}</p>)}
+                  {sortedQuotes.length > 0 && <small>Estimated prices can change before booking.</small>}
+                </div>}
+              </div>
+              <a className="btn uber" href={uberLink(dest)} target="_blank" rel="noreferrer"><span className="ride-icon">U</span><span>
+                Open Uber<small>View available rides and fares</small></span><b>↗</b>
+              </a>
               <button className="btn rapido" onClick={openRapido}>
                 <span className="ride-icon">R</span><span>
-                {copied ? 'Coordinates copied' : 'Book with Rapido'}
-                <small>Quick, affordable rides</small></span><b>↗</b>
+                {copied ? 'Coordinates copied' : 'Open Rapido'}<small>{copied ? 'Paste coordinates in Rapido' : 'View available rides and fares'}</small></span><b>↗</b>
               </button>
             </div>
           </>
@@ -559,9 +713,21 @@ export default function App() {
             <button className="btn start rise" style={{ '--d': '0.45s' }} onClick={start} autoFocus>
               Book a ride
             </button>
+            {!installed && <button className="landing-install rise" style={{ '--d': '0.55s' }} type="button" onClick={installApp}>
+              ↓ Install RideBridge app
+            </button>}
           </div>
         </div>
       )}
+      {installHelp && <div className="install-help-backdrop" onClick={() => setInstallHelp(false)}>
+        <section className="install-help" role="dialog" aria-modal="true" aria-labelledby="install-help-title" onClick={(event) => event.stopPropagation()}>
+          <img src="/ridebridge-192.png" width="52" height="52" alt="" />
+          <h2 id="install-help-title">Install RideBridge</h2>
+          <p>{installInstructions}</p>
+          {!window.isSecureContext && <a href="https://ride-bridge-phi.vercel.app/">Open RideBridge website</a>}
+          <button type="button" onClick={() => setInstallHelp(false)}>Got it</button>
+        </section>
+      </div>}
     </div>
   )
 }
