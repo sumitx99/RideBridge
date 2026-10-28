@@ -53,6 +53,28 @@ export default function App() {
   const [chipEdges, setChipEdges] = useState({ prev: false, next: false })
   const [listening, setListening] = useState(false)
   const [voiceMessage, setVoiceMessage] = useState('')
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [installHelp, setInstallHelp] = useState(false)
+  const [installed, setInstalled] = useState(() =>
+    window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true)
+
+  useEffect(() => {
+    const onInstallReady = (event) => {
+      event.preventDefault()
+      setInstallPrompt(event)
+    }
+    const onInstalled = () => {
+      setInstalled(true)
+      setInstallHelp(false)
+      setInstallPrompt(null)
+    }
+    window.addEventListener('beforeinstallprompt', onInstallReady)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onInstallReady)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
+  }, [])
 
   // New place selected: show its first photo
   useEffect(() => setActive(0), [dest?.name, dest?.address])
@@ -120,7 +142,10 @@ export default function App() {
 
       // Center on user's location if allowed
       navigator.geolocation?.getCurrentPosition(
-        ({ coords }) => map.setCenter({ lat: coords.latitude, lng: coords.longitude }),
+        ({ coords }) => {
+          const pos = { lat: coords.latitude, lng: coords.longitude }
+          map.setCenter(pos)
+        },
         () => {}
       )
     })().catch((e) => setError(e.message))
@@ -354,12 +379,33 @@ export default function App() {
     setTimeout(() => setStarted(true), 450)
   }
 
+  const installApp = async () => {
+    if (!installPrompt) return setInstallHelp(true)
+    try {
+      await installPrompt.prompt()
+      const choice = await installPrompt.userChoice
+      setInstallPrompt(null)
+      if (choice.outcome !== 'accepted') setInstallHelp(true)
+    } catch {
+      setInstallHelp(true)
+    }
+  }
+
+  const installInstructions = !window.isSecureContext
+    ? 'Open the deployed HTTPS RideBridge website in Chrome or Safari, then install it from there.'
+    : /Macintosh/.test(navigator.userAgent) && /Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Edg/.test(navigator.userAgent)
+      ? 'In Safari, choose File → Add to Dock. RideBridge will appear in your Applications and Dock.'
+      : /Android/.test(navigator.userAgent)
+        ? 'In Chrome, tap ⋮ → Add to Home screen → Install app.'
+        : 'Use your browser menu → Install RideBridge. On Mac Safari, choose File → Add to Dock.'
+
   return (
     <div className="app">
       <div className="brand" aria-label="RideBridge home">
         <span className="brand-mark" aria-hidden="true"><span /><span /><span /></span>
         <span className="brand-name">ride<span>bridge</span></span>
         <span className="brand-tagline">YOUR RIDE, RIGHT THERE</span>
+        {!installed && <button className="brand-install" type="button" onClick={installApp} aria-label="Install RideBridge app">↓ <span>Install</span></button>}
       </div>
       <div className="map-wash" aria-hidden="true" />
       <div className="search">
@@ -511,14 +557,15 @@ export default function App() {
             <div className="dest">
               <h2>{dest.name}</h2>
               {dest.address && <p>{dest.address}</p>}
-              <code><span className="coordinate-dot" /> Exact pickup point · {dest.lat}, {dest.lng}</code>
+              <code><span className="coordinate-dot" /> Drop-off point · {dest.lat}, {dest.lng}</code>
             </div>
             <div className="actions">
-              <a className="btn uber" href={uberLink(dest)}><span className="ride-icon">U</span><span>Continue with Uber<small>Open Uber app</small></span><b>↗</b></a>
+              <a className="btn uber" href={uberLink(dest)} target="_blank" rel="noreferrer"><span className="ride-icon">U</span><span>
+                Open Uber<small>View available rides and fares</small></span><b>↗</b>
+              </a>
               <button className="btn rapido" onClick={openRapido}>
                 <span className="ride-icon">R</span><span>
-                {copied ? 'Coordinates copied' : 'Book with Rapido'}
-                <small>Quick, affordable rides</small></span><b>↗</b>
+                {copied ? 'Coordinates copied' : 'Open Rapido'}<small>{copied ? 'Paste coordinates in Rapido' : 'View available rides and fares'}</small></span><b>↗</b>
               </button>
             </div>
           </>
@@ -559,9 +606,21 @@ export default function App() {
             <button className="btn start rise" style={{ '--d': '0.45s' }} onClick={start} autoFocus>
               Book a ride
             </button>
+            {!installed && <button className="landing-install rise" style={{ '--d': '0.55s' }} type="button" onClick={installApp}>
+              ↓ Install RideBridge app
+            </button>}
           </div>
         </div>
       )}
+      {installHelp && <div className="install-help-backdrop" onClick={() => setInstallHelp(false)}>
+        <section className="install-help" role="dialog" aria-modal="true" aria-labelledby="install-help-title" onClick={(event) => event.stopPropagation()}>
+          <img src="/ridebridge-192.png" width="52" height="52" alt="" />
+          <h2 id="install-help-title">Install RideBridge</h2>
+          <p>{installInstructions}</p>
+          {!window.isSecureContext && <a href="https://ride-bridge-phi.vercel.app/">Open RideBridge website</a>}
+          <button type="button" onClick={() => setInstallHelp(false)}>Got it</button>
+        </section>
+      </div>}
     </div>
   )
 }

@@ -1,0 +1,16 @@
+{
+  "name": "RideBridge",
+  "short_name": "RideBridge",
+  "id": "/",
+  "description": "Pin your exact destination and choose your ride.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#edf1ec",
+  "theme_color": "#20312b",
+  "icons": [
+    { "src": "/ridebridge-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/ridebridge-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/ridebridge-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
